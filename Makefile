@@ -21,3 +21,6 @@ clean:
 
 .cpp.formatted:
 	clang-format -style=Google $< >$@ && cp $@ $<
+
+graph.png: graph.gnuplot output.dat
+	gnuplot <graph.gnuplot >graph.png
