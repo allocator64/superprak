@@ -70,9 +70,9 @@ double Time() {
 
 void Call(const char* func_name, int func_result) {
   if (func_result != MPI_SUCCESS) {
-    LOG_ERROR << "Error in MPI call: " << func_name << " code: " << func_result
-              << std::endl;
-    throw std::runtime_error("");
+    std::stringstream ss;
+    ss << "MPI failed: " << func_name << " code: " << func_result;
+    throw std::runtime_error(ss.str());
   }
 }
 }  // namespace mpi
@@ -87,8 +87,9 @@ class RangeMapper {
 
   double operator[](int idx) {
     if (idx < 0 || idx > parts_) {
-      LOG_ERROR << "idx: " << idx << std::endl;
-      throw std::out_of_range("");
+      std::stringstream ss;
+      ss << "idx: " << idx << " parts: " << parts_;
+      throw std::out_of_range(ss.str());
     }
     return step * idx + range_.first;
   }
@@ -190,7 +191,7 @@ void run(int argc, char** argv) {
   CALL_MPI(MPI_Comm_size, MPI_COMM_WORLD, &state::process_num);
   if (state::rank != 0) {
     if (!freopen("stdout", "w", stdout) || !freopen("stderr", "w", stderr)) {
-      LOG_ERROR << "freopen error" << std::endl;
+      throw std::runtime_error("freopen error");
     }
   }
   LOG_INFO << "-- rank: " << state::rank << std::endl;
