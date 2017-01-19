@@ -9,6 +9,8 @@
 #include <fstream>
 #include <cmath>
 #include <vector>
+#include <stdexcept>
+#include <cstdlib>
 
 struct Point {
   double x;
@@ -187,8 +189,9 @@ void run(int argc, char** argv) {
   CALL_MPI(MPI_Comm_rank, MPI_COMM_WORLD, &state::rank);
   CALL_MPI(MPI_Comm_size, MPI_COMM_WORLD, &state::process_num);
   if (state::rank != 0) {
-    freopen("stdout", "w", stdout);
-    freopen("stderr", "w", stderr);
+    if (!freopen("stdout", "w", stdout) || !freopen("stderr", "w", stderr)) {
+      LOG_ERROR << "freopen error" << std::endl;
+    }
   }
   LOG_INFO << "-- rank: " << state::rank << std::endl;
   LOG_INFO << "-- process_num: " << state::process_num << std::endl;
