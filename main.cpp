@@ -1,16 +1,13 @@
-// This is a personal academic project. Dear PVS-Studio, please check it.
-// PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
-
 #include <mpi.h>
 #include <stdio.h>
+#include <cmath>
+#include <cstdlib>
 #include <exception>
+#include <fstream>
 #include <iostream>
 #include <sstream>
-#include <fstream>
-#include <cmath>
-#include <vector>
 #include <stdexcept>
-#include <cstdlib>
+#include <vector>
 
 struct Point {
   double x;
@@ -34,8 +31,11 @@ struct Rectangle {
 };
 
 namespace statement {
-static double eps = 1e-4; 
+
+static double eps = 1e-4;
+
 Rectangle area(Range(0, 3), Range(0, 3));
+
 double F(double x, double y) {
   double tmp = 1 + x * y;
   return (x * x + y * y) / tmp / tmp;
@@ -51,13 +51,14 @@ static int x_points_num;
 static int y_points_num;
 }
 
-#define LOG_ERROR \
-  std::cerr << __FILE__ << ":" << __LINE__ << " (" << state::rank << ") "
+#define LOG_ERROR                                                 \
+  std::cerr << "\n\033[1;31m" __FILE__ << ":" << __LINE__ << " [" \
+            << state::rank << "]\033[0m "
 
 #define LOG_INFO \
-  std::cout << __FILE__ << ":" << __LINE__ << " (" << state::rank << ") "
+  std::cout << "\n" __FILE__ << ":" << __LINE__ << " [" << state::rank << "] "
 
-#define DEBUG(var) LOG_INFO << #var << ": " << var << std::endl
+#define DEBUG(var) LOG_INFO << #var << ": " << var
 
 #define CALL_MPI(func, args...) mpi::Call(#func, func(args))
 
@@ -82,8 +83,7 @@ class RangeMapper {
   RangeMapper(Range range, int parts)
       : step((range.second - range.first) / parts),
         range_(range),
-        parts_(parts)
-         {}
+        parts_(parts) {}
 
   double operator[](int idx) {
     if (idx < 0 || idx > parts_) {
@@ -129,7 +129,8 @@ double Laplas(Matrix& m, RangeMapper x_grid, RangeMapper y_grid, int x, int y) {
 void ApplyR(Matrix& p, RangeMapper x_grid, RangeMapper y_grid, Matrix* r) {
   for (int i = 1; i < r->x_size - 1; ++i) {
     for (int j = 1; j < r->y_size - 1; ++j) {
-      r->at(i, j) = Laplas(p, x_grid, y_grid, i, j) - statement::F(x_grid[i], y_grid[j]);
+      r->at(i, j) =
+          Laplas(p, x_grid, y_grid, i, j) - statement::F(x_grid[i], y_grid[j]);
     }
   }
 }
@@ -176,42 +177,21 @@ void ApplyG(Matrix& r, double alpha, Matrix* g) {
     for (int j = 1; j < r.y_size - 1; ++j) {
       g->at(i, j) = r.at(i, j) - alpha * g->at(i, j);
     }
-  } 
+  }
 }
 
 }  // namespace math
 
+namespace solution {
 
-void run(int argc, char** argv) {
-  CALL_MPI(MPI_Init, &argc, &argv);
-
-  double start_time = mpi::Time();
-
-  CALL_MPI(MPI_Comm_rank, MPI_COMM_WORLD, &state::rank);
-  CALL_MPI(MPI_Comm_size, MPI_COMM_WORLD, &state::process_num);
-  if (state::rank != 0) {
-    if (!freopen("stdout", "w", stdout) || !freopen("stderr", "w", stderr)) {
-      throw std::runtime_error("freopen error");
-    }
-  }
-  LOG_INFO << "-- rank: " << state::rank << std::endl;
-  LOG_INFO << "-- process_num: " << state::process_num << std::endl;
-
-  state::x_points_num = atoi(argv[1]);
-  state::y_points_num = atoi(argv[2]);
-
-  DEBUG(statement::area.x.first);
-  DEBUG(statement::area.x.second);
-  DEBUG(statement::area.y.first);
-  DEBUG(statement::area.y.second);
-
+void Simple() {
   RangeMapper x_grid(statement::area.x, state::x_points_num);
   RangeMapper y_grid(statement::area.y, state::y_points_num);
 
   Matrix p(state::x_points_num, state::y_points_num);
   Matrix r(state::x_points_num, state::y_points_num);
 
-  LOG_INFO << "Initial iteration" << std::endl;
+  LOG_INFO << "Initial iteration";
 
   using statement::Phi;
 
@@ -233,7 +213,7 @@ void run(int argc, char** argv) {
 
   Matrix g = r;
   int counter = 0;
-  for (double diff = 1e100; diff > statement::eps; ) {
+  for (double diff = 1e100; diff > statement::eps;) {
     math::ApplyR(p, x_grid, y_grid, &r);
     double alpha = math::Alpha(r, g, x_grid, y_grid);
     math::ApplyG(r, alpha, &g);
@@ -246,7 +226,8 @@ void run(int argc, char** argv) {
   double err = 0;
   for (int i = 1; i < p.x_size - 1; ++i) {
     for (int j = 1; j < p.y_size - 1; ++j) {
-      err = std::max(err, fabs(statement::Phi(x_grid[i], y_grid[j]) - p.at(i, j)));
+      err = std::max(err,
+                     fabs(statement::Phi(x_grid[i], y_grid[j]) - p.at(i, j)));
     }
   }
 
@@ -258,9 +239,41 @@ void run(int argc, char** argv) {
       out << x_grid[i] << " " << y_grid[j] << " " << p.at(i, j) << std::endl;
     }
   }
+}
+
+}  // namespace solution
+
+void run(int argc, char** argv) {
+  CALL_MPI(MPI_Init, &argc, &argv);
+
+  double start_time = mpi::Time();
+
+  CALL_MPI(MPI_Comm_rank, MPI_COMM_WORLD, &state::rank);
+  CALL_MPI(MPI_Comm_size, MPI_COMM_WORLD, &state::process_num);
+  if (state::rank != 0) {
+    if (!freopen("stdout", "w", stdout) || !freopen("stderr", "w", stderr)) {
+      throw std::runtime_error("freopen error");
+    }
+  }
+  LOG_INFO << "-- rank: " << state::rank;
+  LOG_INFO << "-- process_num: " << state::process_num;
+
+  state::x_points_num = atoi(argv[1]);
+  state::y_points_num = atoi(argv[2]);
+
+  DEBUG(statement::area.x.first);
+  DEBUG(statement::area.x.second);
+  DEBUG(statement::area.y.first);
+  DEBUG(statement::area.y.second);
+
+  if (state::process_num == 1) {
+    solution::Simple();
+  } else {
+    throw std::logic_error("Not implemented");
+  }
 
   double finish_time = mpi::Time();
-  LOG_INFO << "Run time: " << finish_time - start_time << std::endl;
+  LOG_INFO << "Run time: " << finish_time - start_time;
 }
 
 int main(int argc, char** argv) {
@@ -273,10 +286,11 @@ int main(int argc, char** argv) {
   try {
     run(argc, argv);
   } catch (std::exception& e) {
-    LOG_ERROR << "Exception: " << e.what() << std::endl;
+    LOG_ERROR << "Exception: " << e.what();
     CALL_MPI(MPI_Abort, MPI_COMM_WORLD, 1);
     return 2;
   }
 
+  std::cout << std::endl;
   return 0;
 }

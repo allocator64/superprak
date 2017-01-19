@@ -3,9 +3,10 @@ CFLAGS = -c -Wall -O2
 LDFLAGS = 
 SOURCES = main.cpp
 OBJECTS = $(SOURCES:.cpp=.o)
+FORMATTED = $(SOURCES:.cpp=.formatted)
 BINARY = task2
 
-all: $(SOURCES) $(BINARY)
+all: $(FORMATTED) $(SOURCES) $(BINARY)
 
 $(BINARY): $(OBJECTS) 
 	$(CC) $(LDFLAGS) $(OBJECTS) -o $@
@@ -14,4 +15,9 @@ $(BINARY): $(OBJECTS)
 	$(CC) $(CFLAGS) $< -o $@
 
 clean:
-	rm -f $(OBJECTS) $(BINARY)
+	rm -f $(OBJECTS) $(BINARY) $(FORMATTED)
+
+.SUFFIXES: .formatted
+
+.cpp.formatted:
+	clang-format -style=Google $< >$@ && cp $@ $<
