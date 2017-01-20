@@ -15,7 +15,7 @@ $(BINARY): $(OBJECTS)
 	$(CC) $(CFLAGS) $< -o $@
 
 clean:
-	rm -f $(OBJECTS) $(BINARY) $(FORMATTED)
+	rm -f $(OBJECTS) $(BINARY) $(FORMATTED) stderr-* stdout-*
 
 .SUFFIXES: .formatted
 

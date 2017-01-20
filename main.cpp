@@ -4,6 +4,7 @@
 #include <cstdlib>
 #include <exception>
 #include <fstream>
+#include <iomanip>
 #include <iostream>
 #include <sstream>
 #include <stdexcept>
@@ -49,6 +50,15 @@ static int rank;
 static int process_num;
 static int x_points_num;
 static int y_points_num;
+
+static int x_processors_num;
+static int y_processors_num;
+
+static int x_node;
+static int y_node;
+
+static int x_node_points_num;
+static int y_node_points_num;
 }
 
 #define LOG_ERROR                                                 \
@@ -56,7 +66,7 @@ static int y_points_num;
             << state::rank << "]\033[0m "
 
 #define LOG_INFO \
-  std::cout << "\n" __FILE__ << ":" << __LINE__ << " [" << state::rank << "] "
+  std::cerr << "\n" __FILE__ << ":" << __LINE__ << " [" << state::rank << "] "
 
 #define DEBUG(var) LOG_INFO << #var << ": " << var
 
@@ -80,25 +90,27 @@ void Call(const char* func_name, int func_result) {
 
 class RangeMapper {
  public:
-  RangeMapper(Range range, int parts)
-      : step((range.second - range.first) / parts),
+  RangeMapper(Range range, int total_row_len, int row_offet = 0)
+      : step((range.second - range.first) / total_row_len),
+        row_offet(row_offet),
         range_(range),
-        parts_(parts) {}
+        total_row_len_(total_row_len) {}
 
   double operator[](int idx) {
-    if (idx < 0 || idx > parts_) {
-      std::stringstream ss;
-      ss << "idx: " << idx << " parts: " << parts_;
-      throw std::out_of_range(ss.str());
-    }
-    return step * idx + range_.first;
+    // if (idx < 0 || idx > parts_) {
+    //   std::stringstream ss;
+    //   ss << "idx: " << idx << " parts: " << parts_;
+    //   throw std::out_of_range(ss.str());
+    // }
+    return step * (idx + row_offet) + range_.first;
   }
 
   const double step;
+  const int row_offet;
 
  private:
   Range range_;
-  int parts_;
+  int total_row_len_;
 };
 
 class Matrix {
@@ -182,7 +194,154 @@ void ApplyG(Matrix& r, double alpha, Matrix* g) {
 
 }  // namespace math
 
+namespace utils {
+void FillAllProcessors() {
+  int power2 = 1;
+  while ((1 << power2) < state::process_num) ++power2;
+  state::x_processors_num = 1 << (power2 / 2);
+  state::y_processors_num = state::process_num / state::x_processors_num;
+  DEBUG(state::x_processors_num);
+  DEBUG(state::y_processors_num);
+}
+
+void FillCurrentNode() {
+  state::x_node = state::rank % state::x_processors_num;
+  state::y_node = state::rank / state::x_processors_num;
+  DEBUG(state::x_node);
+  DEBUG(state::y_node);
+}
+
+RangeMapper AdjustCell(Range real_row, int real_row_points,
+                       int total_row_processors, int cur_position,
+                       int* cur_len) {
+  int points_per_processor = real_row_points / total_row_processors;
+  int additional_points = real_row_points % total_row_processors;
+
+  int row_offet = points_per_processor * cur_position;
+  if (cur_position < additional_points) {
+    row_offet += cur_position;
+  } else {
+    row_offet += additional_points;
+  }
+  if (cur_position != 0) {
+    row_offet--;
+  }
+
+  *cur_len = points_per_processor;
+  if (cur_position < additional_points) {
+    (*cur_len)++;
+  }
+  if (cur_position != 0) {
+    (*cur_len)++;
+  }
+  if (cur_position != total_row_processors - 1) {
+    (*cur_len)++;
+  }
+
+  return RangeMapper(real_row, real_row_points, row_offet);
+}
+
+}  // namespace utils
+
+namespace comm {
+int GetNeighborNode(int x_diff, int y_diff) {
+  return (state::x_processors_num + x_diff) +
+         (state::y_processors_num + y_diff) * state::x_processors_num;
+}
+
+struct Neighbor {
+  struct Area {
+    Area(int x_first, int x_second, int y_first, int y_second)
+        : x_first(x_first),
+          x_second(x_second),
+          y_first(y_first),
+          y_second(y_second) {
+      DEBUG(x_first);
+      DEBUG(x_second);
+      DEBUG(y_first);
+      DEBUG(y_second);
+    }
+    int x_first;
+    int x_second;
+    int y_first;
+    int y_second;
+  };
+
+  Neighbor(Area area, bool need_send, int id)
+      : area(area), need_send(need_send), id(id) {
+    DEBUG(need_send);
+    DEBUG(id);
+  }
+
+  Area area;
+  bool need_send;
+  int id;
+};
+
+std::vector<Neighbor> neighbors;
+}  // namespace comm
+
 namespace solution {
+
+void Super() {
+  utils::FillAllProcessors();
+  utils::FillCurrentNode();
+
+  RangeMapper x_grid = utils::AdjustCell(statement::area.x, state::x_points_num,
+                                         state::x_processors_num, state::x_node,
+                                         &state::x_node_points_num);
+  RangeMapper y_grid = utils::AdjustCell(statement::area.y, state::y_points_num,
+                                         state::y_processors_num, state::y_node,
+                                         &state::y_node_points_num);
+  DEBUG(state::x_node_points_num);
+  DEBUG(state::y_node_points_num);
+  DEBUG(x_grid.row_offet);
+  DEBUG(y_grid.row_offet);
+
+  if (state::x_node != 0) {
+    int neighbor = comm::GetNeighborNode(-1, 0);
+    comm::neighbors.push_back(comm::Neighbor(
+        comm::Neighbor::Area(0, 1, 1, state::y_node_points_num - 1),
+        /* need_send */ false, neighbor));
+    comm::neighbors.push_back(comm::Neighbor(
+        comm::Neighbor::Area(1, 2, 1, state::y_node_points_num - 1),
+        /* need_send */ true, neighbor));
+  }
+  if (state::y_node != 0) {
+    int neighbor = comm::GetNeighborNode(0, -1);
+    comm::neighbors.push_back(comm::Neighbor(
+        comm::Neighbor::Area(1, state::x_node_points_num - 1, 0, 1),
+        /* need_send */ false, neighbor));
+    comm::neighbors.push_back(comm::Neighbor(
+        comm::Neighbor::Area(1, state::x_node_points_num - 1, 1, 2),
+        /* need_send */ true, neighbor));
+  }
+  if (state::x_node != state::x_processors_num - 1) {
+    int neighbor = comm::GetNeighborNode(1, 0);
+    comm::neighbors.push_back(
+        comm::Neighbor(comm::Neighbor::Area(state::x_node_points_num - 2,
+                                            state::x_node_points_num - 1, 1,
+                                            state::y_node_points_num - 1),
+                       /* need_send */ true, neighbor));
+    comm::neighbors.push_back(
+        comm::Neighbor(comm::Neighbor::Area(state::x_node_points_num - 1,
+                                            state::x_node_points_num, 1,
+                                            state::y_node_points_num - 1),
+                       /* need_send */ false, neighbor));
+  }
+  if (state::y_node != state::y_processors_num - 1) {
+    int neighbor = comm::GetNeighborNode(0, 1);
+    comm::neighbors.push_back(
+        comm::Neighbor(comm::Neighbor::Area(1, state::x_node_points_num - 1,
+                                            state::y_node_points_num - 2,
+                                            state::y_node_points_num - 1),
+                       /* need_send */ true, neighbor));
+    comm::neighbors.push_back(comm::Neighbor(
+        comm::Neighbor::Area(1, state::x_node_points_num - 1,
+                             state::y_points_num - 1, state::y_points_num),
+        /* need_send */ false, neighbor));
+  }
+}
 
 void Simple() {
   RangeMapper x_grid(statement::area.x, state::x_points_num);
@@ -251,7 +410,14 @@ void run(int argc, char** argv) {
   CALL_MPI(MPI_Comm_rank, MPI_COMM_WORLD, &state::rank);
   CALL_MPI(MPI_Comm_size, MPI_COMM_WORLD, &state::process_num);
   if (state::rank != 0) {
-    if (!freopen("stdout", "w", stdout) || !freopen("stderr", "w", stderr)) {
+    std::stringstream ss;
+    ss << "stderr-" << std::setfill('0') << std::setw(2) << state::rank;
+    if (!freopen(ss.str().c_str(), "a", stderr)) {
+      throw std::runtime_error("freopen error");
+    }
+    std::stringstream ss2;
+    ss2 << "stdout-" << std::setfill('0') << std::setw(2) << state::rank;
+    if (!freopen(ss2.str().c_str(), "a", stdout)) {
       throw std::runtime_error("freopen error");
     }
   }
@@ -269,7 +435,7 @@ void run(int argc, char** argv) {
   if (state::process_num == 1) {
     solution::Simple();
   } else {
-    throw std::logic_error("Not implemented");
+    solution::Super();
   }
 
   double finish_time = mpi::Time();
