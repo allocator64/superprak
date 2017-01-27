@@ -11,9 +11,11 @@ FORMATTED = $(SOURCES:.cpp=.cformatted) $(HEADERS:.h=.hformatted)
 BINARY = task2
 POSTCOMPILE = mv -f $(DEPDIR)/$*.Td $(DEPDIR)/$*.d
 
-all: $(FORMATTED) $(SOURCES) $(BINARY)
+all: $(BINARY)
 
-$(BINARY): $(OBJECTS) 
+format: $(FORMATTED) $(SOURCES)
+
+$(BINARY): $(OBJECTS)
 	$(CC) $(LDFLAGS) $(OBJECTS) -o $@
 
 %.o : %.cpp

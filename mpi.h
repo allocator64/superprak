@@ -2,6 +2,7 @@
 
 #include <mpi.h>
 #include <sstream>
+#include <stdexcept>
 #include <vector>
 
 #include "logger.h"
