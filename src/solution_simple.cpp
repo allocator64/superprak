@@ -41,8 +41,8 @@ void Simple() {
     math::ApplyG(r, alpha, &g);
     tau = math::Tau(r, g, x_grid, y_grid);
     diff = math::ApplyP(g, tau, &p);
-    // DEBUG(counter++);
-    // DEBUG(diff);
+    DEBUG(counter++);
+    DEBUG(diff);
   }
 
   double err = 0;

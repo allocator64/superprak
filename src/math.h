@@ -5,8 +5,8 @@
 #include "statement.h"
 
 namespace math {
-inline double Laplas(Matrix& m, RangeMapper x_grid, RangeMapper y_grid, int x,
-                     int y) {
+inline double Laplas(const Matrix& m, const RangeMapper& x_grid,
+                     const RangeMapper& y_grid, int x, int y) {
   double ldx = (m.at(x, y) - m.at(x - 1, y)) / x_grid.step;
   double rdx = (m.at(x + 1, y) - m.at(x, y)) / x_grid.step;
   double ldy = (m.at(x, y) - m.at(x, y - 1)) / y_grid.step;
@@ -16,8 +16,8 @@ inline double Laplas(Matrix& m, RangeMapper x_grid, RangeMapper y_grid, int x,
   return dx + dy;
 }
 
-inline void ApplyR(Matrix& p, RangeMapper x_grid, RangeMapper y_grid,
-                   Matrix* r) {
+inline void ApplyR(const Matrix& p, const RangeMapper& x_grid,
+                   const RangeMapper& y_grid, Matrix* r) {
 #ifdef USE_OPENMP
 #pragma omp parallel for
 #endif
@@ -29,8 +29,9 @@ inline void ApplyR(Matrix& p, RangeMapper x_grid, RangeMapper y_grid,
   }
 }
 
-inline double Tau(Matrix& r, Matrix& g, RangeMapper x_grid, RangeMapper y_grid,
-                  double* dst_up = NULL, double* dst_down = NULL) {
+inline double Tau(const Matrix& r, const Matrix& g, const RangeMapper& x_grid,
+                  const RangeMapper& y_grid, double* dst_up = NULL,
+                  double* dst_down = NULL) {
   double up = 0;
   double down = 0;
 #ifdef USE_OPENMP
@@ -52,10 +53,10 @@ inline double Tau(Matrix& r, Matrix& g, RangeMapper x_grid, RangeMapper y_grid,
   return up / down;
 }
 
-inline double ApplyP(Matrix& g, double tau, Matrix* p) {
+inline double ApplyP(const Matrix& g, double tau, Matrix* p) {
   double diff = 0;
 #ifdef USE_OPENMP
-#pragma omp parallel for reduction(max : diff)
+// #pragma omp parallel for reduction(max : diff)
 #endif
   for (int i = 1; i < p->x_size - 1; ++i) {
     for (int j = 1; j < p->y_size - 1; ++j) {
@@ -67,8 +68,8 @@ inline double ApplyP(Matrix& g, double tau, Matrix* p) {
   return diff;
 }
 
-inline double Alpha(Matrix& r, Matrix& g, RangeMapper x_grid,
-                    RangeMapper y_grid, double* dst_up = NULL,
+inline double Alpha(const Matrix& r, const Matrix& g, const RangeMapper& x_grid,
+                    const RangeMapper& y_grid, double* dst_up = NULL,
                     double* dst_down = NULL) {
   double up = 0;
   double down = 0;
@@ -90,7 +91,7 @@ inline double Alpha(Matrix& r, Matrix& g, RangeMapper x_grid,
   return up / down;
 }
 
-inline void ApplyG(Matrix& r, double alpha, Matrix* g) {
+inline void ApplyG(const Matrix& r, double alpha, Matrix* g) {
 #ifdef USE_OPENMP
 #pragma omp parallel for
 #endif

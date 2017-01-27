@@ -39,7 +39,7 @@ void run(int argc, char** argv) {
 
   state::x_points_num = atoi(argv[1]);
   state::y_points_num = atoi(argv[2]);
-  state::output_path = argv[3] ?: "";
+  state::output_path = argv[3] ? argv[3] : "";
 
   // DEBUG(statement::area.x.first);
   // DEBUG(statement::area.x.second);

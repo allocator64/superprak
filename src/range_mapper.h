@@ -7,10 +7,9 @@ class RangeMapper {
   RangeMapper(Range range, int total_row_len, int row_offet = 0)
       : step((range.second - range.first) / total_row_len),
         row_offet(row_offet),
-        range_(range),
-        total_row_len_(total_row_len) {}
+        range_(range) {}
 
-  double operator[](int idx) {
+  double operator[](int idx) const {
     // if (idx < 0 || idx > parts_) {
     //   std::stringstream ss;
     //   ss << "idx: " << idx << " parts: " << parts_;
@@ -24,5 +23,4 @@ class RangeMapper {
 
  private:
   Range range_;
-  int total_row_len_;
 };

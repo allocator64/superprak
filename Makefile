@@ -1,26 +1,24 @@
 TMPDIR:=.tmp
 $(shell mkdir -p $(TMPDIR) >/dev/null)
 ifeq ($(OPENMP),1)
-	CC = mpixlcxx_r -qsmp=omp -v
-	USE_OPENMP = -D"USE_OPENMP"
+	CC = mpixlcxx_r -qsmp=omp -v -O2 -D"USE_OPENMP"
+	BINARY = task2_omp
 else
-	CC = mpicxx
-	USE_OPENMP =
+	CC = mpicxx -Wall -O2
+	BINARY = task2_no_omp
 endif
 
-CFLAGS = -O2 $(USE_OPENMP)
 SOURCES = $(wildcard src/*.cpp)
 HEADERS = $(wildcard src/*.h)
 OBJECTS = $(SOURCES:.cpp=.o)
 FORMATTED = $(addprefix $(TMPDIR)/, $(notdir $(SOURCES)) $(notdir $(HEADERS)))
-BINARY = task2
 
 all: $(BINARY)
 
 format: $(FORMATTED) $(SOURCES)
 
 $(BINARY): $(SOURCES) $(HEADERS)
-	$(CC) $(CFLAGS) $(SOURCES) -o $@
+	$(CC) $(SOURCES) -o $@
 
 clean:
 	rm -f $(OBJECTS) $(BINARY) $(FORMATTED) stderr-* stdout-*

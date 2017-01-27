@@ -119,7 +119,7 @@ void Super() {
   comm::SyncWithNeighbors(&p);
 
   Matrix g = r;
-  // int counter = 0;
+  int counter = 0;
   for (double diff = 1e100; diff > statement::eps;) {
     math::ApplyR(p, x_grid, y_grid, &r);
     comm::SyncWithNeighbors(&r);
@@ -140,9 +140,9 @@ void Super() {
     comm::AllReduceMax(&global_diff);
     diff = global_diff;
 
-    // counter++;
-    // DEBUG(counter++);
-    // DEBUG(diff);
+    counter++;
+    DEBUG(counter++);
+    DEBUG(diff);
   }
 
   double err = 0;
