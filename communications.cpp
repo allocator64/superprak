@@ -53,7 +53,7 @@ void SyncWithNeighbors(Matrix* m) {
   for (neighbors_iterator n = neighbors.begin(); n != neighbors.end(); ++n) {
     requests.push_back(MakeRequest(*m, *n));
   }
-  for (int idx = 0; idx < requests.size(); ++idx) {
+  for (size_t idx = 0; idx < requests.size(); ++idx) {
     FinishRequest(neighbors[idx], m, requests[idx]);
   }
 }
