@@ -1,5 +1,6 @@
 #include <mpi.h>
 #include <cstdio>
+#include <cstdlib>
 #include <exception>
 #include <iomanip>
 #include <iostream>

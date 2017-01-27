@@ -18,6 +18,9 @@ inline double Laplas(Matrix& m, RangeMapper x_grid, RangeMapper y_grid, int x,
 
 inline void ApplyR(Matrix& p, RangeMapper x_grid, RangeMapper y_grid,
                    Matrix* r) {
+#ifdef USE_OPENMP
+#pragma omp parallel for
+#endif
   for (int i = 1; i < r->x_size - 1; ++i) {
     for (int j = 1; j < r->y_size - 1; ++j) {
       r->at(i, j) =
@@ -30,6 +33,9 @@ inline double Tau(Matrix& r, Matrix& g, RangeMapper x_grid, RangeMapper y_grid,
                   double* dst_up = NULL, double* dst_down = NULL) {
   double up = 0;
   double down = 0;
+#ifdef USE_OPENMP
+#pragma omp parallel for reduction(+ : up, down)
+#endif
   for (int i = 1; i < r.x_size - 1; ++i) {
     for (int j = 1; j < r.y_size - 1; ++j) {
       double tmp = g.at(i, j);
@@ -48,6 +54,9 @@ inline double Tau(Matrix& r, Matrix& g, RangeMapper x_grid, RangeMapper y_grid,
 
 inline double ApplyP(Matrix& g, double tau, Matrix* p) {
   double diff = 0;
+#ifdef USE_OPENMP
+#pragma omp parallel for reduction(max : diff)
+#endif
   for (int i = 1; i < p->x_size - 1; ++i) {
     for (int j = 1; j < p->y_size - 1; ++j) {
       double tmp = p->at(i, j) - tau * g.at(i, j);
@@ -63,6 +72,9 @@ inline double Alpha(Matrix& r, Matrix& g, RangeMapper x_grid,
                     double* dst_down = NULL) {
   double up = 0;
   double down = 0;
+#ifdef USE_OPENMP
+#pragma omp parallel for reduction(+ : up, down)
+#endif
   for (int i = 1; i < r.x_size - 1; ++i) {
     for (int j = 1; j < r.y_size - 1; ++j) {
       up += Laplas(r, x_grid, y_grid, i, j) * g.at(i, j);
@@ -79,6 +91,9 @@ inline double Alpha(Matrix& r, Matrix& g, RangeMapper x_grid,
 }
 
 inline void ApplyG(Matrix& r, double alpha, Matrix* g) {
+#ifdef USE_OPENMP
+#pragma omp parallel for
+#endif
   for (int i = 1; i < r.x_size - 1; ++i) {
     for (int j = 1; j < r.y_size - 1; ++j) {
       g->at(i, j) = r.at(i, j) - alpha * g->at(i, j);

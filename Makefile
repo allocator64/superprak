@@ -1,8 +1,15 @@
 DEPDIR := .d
 $(shell mkdir -p $(DEPDIR) >/dev/null)
 DEPFLAGS = -MT $@ -MMD -MP -MF $(DEPDIR)/$*.Td
-CC = mpicxx
-CFLAGS = -c -Wall -O2 $(DEPFLAGS)
+ifeq ($(OPENMP),1)
+	CC = mpicxx_r
+	USE_OPENMP = "-DUSE_OPENMP"
+else
+	CC = mpicxx
+	USE_OPENMP =
+endif
+
+CFLAGS = -c -Wall -O2 $(DEPFLAGS) $(USE_OPENMP)
 LDFLAGS = 
 SOURCES = $(wildcard *.cpp)
 HEADERS = $(wildcard *.h)
