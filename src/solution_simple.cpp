@@ -17,20 +17,16 @@ void Simple() {
   Matrix p(state::x_points_num, state::y_points_num);
   Matrix r(state::x_points_num, state::y_points_num);
 
-  LOG_INFO << "Initial iteration";
-
-  using statement::Phi;
-
   for (int i = 0; i < state::x_points_num; ++i) {
-    p.at(i, 0) = Phi(x_grid[i], y_grid[0]);
+    p.at(i, 0) = statement::Phi(x_grid[i], y_grid[0]);
     p.at(i, state::y_points_num - 1) =
-        Phi(x_grid[i], y_grid[state::y_points_num - 1]);
+        statement::Phi(x_grid[i], y_grid[state::y_points_num - 1]);
   }
 
   for (int j = 0; j < state::y_points_num; ++j) {
-    p.at(0, j) = Phi(x_grid[0], y_grid[j]);
+    p.at(0, j) = statement::Phi(x_grid[0], y_grid[j]);
     p.at(state::x_points_num - 1, j) =
-        Phi(x_grid[state::x_points_num - 1], y_grid[j]);
+        statement::Phi(x_grid[state::x_points_num - 1], y_grid[j]);
   }
 
   math::ApplyR(p, x_grid, y_grid, &r);
@@ -45,8 +41,8 @@ void Simple() {
     math::ApplyG(r, alpha, &g);
     tau = math::Tau(r, g, x_grid, y_grid);
     diff = math::ApplyP(g, tau, &p);
-    DEBUG(counter++);
-    DEBUG(diff);
+    // DEBUG(counter++);
+    // DEBUG(diff);
   }
 
   double err = 0;
@@ -59,10 +55,12 @@ void Simple() {
 
   DEBUG(err);
 
-  std::ofstream out("output.dat");
-  for (int i = 0; i < p.x_size; ++i) {
-    for (int j = 0; j < p.y_size; ++j) {
-      out << x_grid[i] << " " << y_grid[j] << " " << p.at(i, j) << std::endl;
+  if (!state::output_path.empty()) {
+    std::ofstream out(state::output_path.c_str());
+    for (int i = 0; i < p.x_size; ++i) {
+      for (int j = 0; j < p.y_size; ++j) {
+        out << x_grid[i] << " " << y_grid[j] << " " << p.at(i, j) << std::endl;
+      }
     }
   }
 }

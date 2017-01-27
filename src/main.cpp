@@ -20,17 +20,26 @@ void run(int argc, char** argv) {
   CALL_MPI(MPI_Comm_rank, MPI_COMM_WORLD, &state::rank);
   CALL_MPI(MPI_Comm_size, MPI_COMM_WORLD, &state::process_num);
 
+  if (state::rank != 0) {
+    if (!freopen("/dev/null", "a", stdout)) {
+      throw std::runtime_error("freopen error");
+    }
+    if (!freopen("/dev/null", "a", stderr)) {
+      throw std::runtime_error("freopen error");
+    }
+  }
   // std::stringstream ss;
   // ss << "stderr-" << std::setfill('0') << std::setw(2) << state::rank;
   // if (!freopen(ss.str().c_str(), "a", stderr)) {
   //   throw std::runtime_error("freopen error");
   // }
 
-  DEBUG(state::rank);
-  DEBUG(state::process_num);
+  // DEBUG(state::rank);
+  // DEBUG(state::process_num);
 
   state::x_points_num = atoi(argv[1]);
   state::y_points_num = atoi(argv[2]);
+  state::output_path = argv[3] ?: "";
 
   // DEBUG(statement::area.x.first);
   // DEBUG(statement::area.x.second);

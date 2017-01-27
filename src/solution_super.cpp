@@ -19,8 +19,8 @@ void Super() {
   RangeMapper y_grid = utils::AdjustCell(statement::area.y, state::y_points_num,
                                          state::y_processors_num, state::y_node,
                                          &state::y_node_points_num);
-  DEBUG(state::x_node_points_num);
-  DEBUG(state::y_node_points_num);
+  // DEBUG(state::x_node_points_num);
+  // DEBUG(state::y_node_points_num);
   // DEBUG(x_grid.row_offet);
   // DEBUG(y_grid.row_offet);
 
@@ -119,7 +119,7 @@ void Super() {
   comm::SyncWithNeighbors(&p);
 
   Matrix g = r;
-  int counter = 0;
+  // int counter = 0;
   for (double diff = 1e100; diff > statement::eps;) {
     math::ApplyR(p, x_grid, y_grid, &r);
     comm::SyncWithNeighbors(&r);
@@ -140,8 +140,9 @@ void Super() {
     comm::AllReduceMax(&global_diff);
     diff = global_diff;
 
-    DEBUG(counter++);
-    DEBUG(diff);
+    // counter++;
+    // DEBUG(counter++);
+    // DEBUG(diff);
   }
 
   double err = 0;

@@ -14,4 +14,6 @@ int y_node;
 
 int x_node_points_num;
 int y_node_points_num;
+
+std::string output_path;
 }  // namespace state
