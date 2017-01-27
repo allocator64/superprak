@@ -25,10 +25,7 @@ $(BINARY): $(SOURCES) $(HEADERS)
 clean:
 	rm -f $(OBJECTS) $(BINARY) $(FORMATTED) stderr-* stdout-*
 
-$(TMPDIR)/%.cpp : src/%.cpp
-	clang-format -style=Google $< >$@ && cp $@ $<
-
-$(TMPDIR)/%.h : src/%.h
+$(TMPDIR)/% : src/%
 	clang-format -style=Google $< >$@ && cp $@ $<
 
 graph.png: graph.gnuplot output.dat
