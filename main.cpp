@@ -1,5 +1,7 @@
 #include <mpi.h>
 #include <stdio.h>
+#include <unistd.h>
+#include <cassert>
 #include <cmath>
 #include <cstdlib>
 #include <exception>
@@ -68,7 +70,12 @@ static int y_node_points_num;
 #define LOG_INFO \
   std::cerr << "\n" __FILE__ << ":" << __LINE__ << " [" << state::rank << "] "
 
-#define DEBUG(var) LOG_INFO << #var << ": " << var
+#define DEBUG(var)                     \
+  do {                                 \
+    if (state::rank == 0) {            \
+      LOG_INFO << #var << ": " << var; \
+    }                                  \
+  } while (false)
 
 #define CALL_MPI(func, args...) mpi::Call(#func, func(args))
 
@@ -86,6 +93,25 @@ void Call(const char* func_name, int func_result) {
     throw std::runtime_error(ss.str());
   }
 }
+
+struct Request {
+  Request(int buf_len) : buf(buf_len), mpi_req() {}
+  std::vector<double> buf;
+  MPI_Request mpi_req;
+
+  void Done() { CALL_MPI(MPI_Wait, &mpi_req, MPI_STATUS_IGNORE); }
+
+  void Send(int id) {
+    CALL_MPI(MPI_Isend, buf.data(), buf.size(), MPI_DOUBLE, id, 0,
+             MPI_COMM_WORLD, &mpi_req);
+  }
+
+  void Receive(int id) {
+    CALL_MPI(MPI_Irecv, buf.data(), buf.size(), MPI_DOUBLE, id, 0,
+             MPI_COMM_WORLD, &mpi_req);
+  }
+};
+
 }  // namespace mpi
 
 class RangeMapper {
@@ -147,7 +173,8 @@ void ApplyR(Matrix& p, RangeMapper x_grid, RangeMapper y_grid, Matrix* r) {
   }
 }
 
-double Tau(Matrix& r, Matrix& g, RangeMapper x_grid, RangeMapper y_grid) {
+double Tau(Matrix& r, Matrix& g, RangeMapper x_grid, RangeMapper y_grid,
+           double* dst_up = NULL, double* dst_down = NULL) {
   double up = 0;
   double down = 0;
   for (int i = 1; i < r.x_size - 1; ++i) {
@@ -156,6 +183,12 @@ double Tau(Matrix& r, Matrix& g, RangeMapper x_grid, RangeMapper y_grid) {
       up += r.at(i, j) * tmp;
       down += Laplas(g, x_grid, y_grid, i, j) * tmp;
     }
+  }
+  if (dst_up) {
+    *dst_up = up;
+  }
+  if (dst_down) {
+    *dst_down = down;
   }
   return up / down;
 }
@@ -172,7 +205,8 @@ double ApplyP(Matrix& g, double tau, Matrix* p) {
   return diff;
 }
 
-double Alpha(Matrix& r, Matrix& g, RangeMapper x_grid, RangeMapper y_grid) {
+double Alpha(Matrix& r, Matrix& g, RangeMapper x_grid, RangeMapper y_grid,
+             double* dst_up = NULL, double* dst_down = NULL) {
   double up = 0;
   double down = 0;
   for (int i = 1; i < r.x_size - 1; ++i) {
@@ -180,6 +214,12 @@ double Alpha(Matrix& r, Matrix& g, RangeMapper x_grid, RangeMapper y_grid) {
       up += Laplas(r, x_grid, y_grid, i, j) * g.at(i, j);
       down += Laplas(g, x_grid, y_grid, i, j) * g.at(i, j);
     }
+  }
+  if (dst_up) {
+    *dst_up = up;
+  }
+  if (dst_down) {
+    *dst_down = down;
   }
   return up / down;
 }
@@ -200,15 +240,15 @@ void FillAllProcessors() {
   while ((1 << power2) < state::process_num) ++power2;
   state::x_processors_num = 1 << (power2 / 2);
   state::y_processors_num = state::process_num / state::x_processors_num;
-  DEBUG(state::x_processors_num);
-  DEBUG(state::y_processors_num);
+  // DEBUG(state::x_processors_num);
+  // DEBUG(state::y_processors_num);
 }
 
 void FillCurrentNode() {
   state::x_node = state::rank % state::x_processors_num;
   state::y_node = state::rank / state::x_processors_num;
-  DEBUG(state::x_node);
-  DEBUG(state::y_node);
+  // DEBUG(state::x_node);
+  // DEBUG(state::y_node);
 }
 
 RangeMapper AdjustCell(Range real_row, int real_row_points,
@@ -245,8 +285,9 @@ RangeMapper AdjustCell(Range real_row, int real_row_points,
 
 namespace comm {
 int GetNeighborNode(int x_diff, int y_diff) {
-  return (state::x_processors_num + x_diff) +
-         (state::y_processors_num + y_diff) * state::x_processors_num;
+  int neighbor = (state::x_node + x_diff) +
+                 (state::y_node + y_diff) * state::x_processors_num;
+  return neighbor;
 }
 
 struct Neighbor {
@@ -255,12 +296,9 @@ struct Neighbor {
         : x_first(x_first),
           x_second(x_second),
           y_first(y_first),
-          y_second(y_second) {
-      DEBUG(x_first);
-      DEBUG(x_second);
-      DEBUG(y_first);
-      DEBUG(y_second);
-    }
+          y_second(y_second) {}
+
+    int size() { return (x_second - x_first) * (y_second - y_first); }
     int x_first;
     int x_second;
     int y_first;
@@ -268,10 +306,7 @@ struct Neighbor {
   };
 
   Neighbor(Area area, bool need_send, int id)
-      : area(area), need_send(need_send), id(id) {
-    DEBUG(need_send);
-    DEBUG(id);
-  }
+      : area(area), need_send(need_send), id(id) {}
 
   Area area;
   bool need_send;
@@ -279,6 +314,66 @@ struct Neighbor {
 };
 
 std::vector<Neighbor> neighbors;
+typedef std::vector<Neighbor>::iterator neighbors_iterator;
+
+mpi::Request* MakeRequest(Matrix& m, Neighbor& n) {
+  Neighbor::Area& area = n.area;
+  mpi::Request* req = new mpi::Request(area.size());
+  if (n.need_send) {
+    int idx = 0;
+    for (int i = area.x_first; i < area.x_second; ++i) {
+      for (int j = area.y_first; j < area.y_second; ++j) {
+        req->buf.at(idx++) = m.at(i, j);
+      }
+    }
+    req->Send(n.id);
+  } else {
+    req->Receive(n.id);
+  }
+  return req;
+}
+
+void FinishRequest(Neighbor& n, Matrix* m, mpi::Request* req) {
+  req->Done();
+  if (!n.need_send) {
+    int idx = 0;
+    Neighbor::Area& area = n.area;
+    // assert(area.size() == req->buf.size());
+    for (int i = area.x_first; i < area.x_second; ++i) {
+      for (int j = area.y_first; j < area.y_second; ++j) {
+        m->at(i, j) = req->buf[idx++];
+      }
+    }
+  }
+  delete req;
+}
+
+void SyncWithNeighbors(Matrix* m) {
+  std::vector<mpi::Request*> requests;
+  // requests.reserve(neighbors.size());
+  for (neighbors_iterator n = neighbors.begin(); n != neighbors.end(); ++n) {
+    requests.push_back(MakeRequest(*m, *n));
+  }
+  for (int idx = 0; idx < requests.size(); ++idx) {
+    FinishRequest(neighbors[idx], m, requests[idx]);
+  }
+}
+
+void AllReduceSum(double* up, double* down) {
+  static double buf[2];
+  buf[0] = *up;
+  buf[1] = *down;
+  CALL_MPI(MPI_Allreduce, MPI_IN_PLACE, buf, /* count */ 2, MPI_DOUBLE, MPI_SUM,
+           MPI_COMM_WORLD);
+  *up = buf[0];
+  *down = buf[1];
+}
+
+void AllReduceMax(double* diff) {
+  CALL_MPI(MPI_Allreduce, MPI_IN_PLACE, diff, /* count */ 1, MPI_DOUBLE,
+           MPI_MAX, MPI_COMM_WORLD);
+}
+
 }  // namespace comm
 
 namespace solution {
@@ -295,8 +390,8 @@ void Super() {
                                          &state::y_node_points_num);
   DEBUG(state::x_node_points_num);
   DEBUG(state::y_node_points_num);
-  DEBUG(x_grid.row_offet);
-  DEBUG(y_grid.row_offet);
+  // DEBUG(x_grid.row_offet);
+  // DEBUG(y_grid.row_offet);
 
   if (state::x_node != 0) {
     int neighbor = comm::GetNeighborNode(-1, 0);
@@ -336,11 +431,98 @@ void Super() {
                                             state::y_node_points_num - 2,
                                             state::y_node_points_num - 1),
                        /* need_send */ true, neighbor));
-    comm::neighbors.push_back(comm::Neighbor(
-        comm::Neighbor::Area(1, state::x_node_points_num - 1,
-                             state::y_points_num - 1, state::y_points_num),
-        /* need_send */ false, neighbor));
+    comm::neighbors.push_back(
+        comm::Neighbor(comm::Neighbor::Area(1, state::x_node_points_num - 1,
+                                            state::y_node_points_num - 1,
+                                            state::y_node_points_num),
+                       /* need_send */ false, neighbor));
   }
+
+  // for (int i = 0; i < comm::neighbors.size(); ++i) {
+  //   DEBUG(i);
+  //   DEBUG(comm::neighbors[i].id);
+  //   DEBUG(comm::neighbors[i].need_send);
+  //   DEBUG(comm::neighbors[i].area.x_first);
+  //   DEBUG(comm::neighbors[i].area.x_second);
+  //   DEBUG(comm::neighbors[i].area.y_first);
+  //   DEBUG(comm::neighbors[i].area.y_second);
+  // }
+
+  Matrix p(state::x_node_points_num, state::y_node_points_num);
+  Matrix r(state::x_node_points_num, state::y_node_points_num);
+
+  using statement::Phi;
+
+  for (int i = 0; i < state::x_node_points_num; ++i) {
+    if (state::y_node == 0) {
+      p.at(i, 0) = Phi(x_grid[i], y_grid[0]);
+    }
+    if (state::y_node == state::y_processors_num - 1) {
+      p.at(i, state::y_node_points_num - 1) =
+          Phi(x_grid[i], y_grid[state::y_node_points_num - 1]);
+    }
+  }
+
+  for (int j = 0; j < state::y_node_points_num; ++j) {
+    if (state::x_node == 0) {
+      p.at(0, j) = Phi(x_grid[0], y_grid[j]);
+    }
+    if (state::x_node == state::x_processors_num - 1) {
+      p.at(state::x_node_points_num - 1, j) =
+          Phi(x_grid[state::x_node_points_num - 1], y_grid[j]);
+    }
+  }
+
+  double up = 0;
+  double down = 0;
+  double global_diff = 0;
+
+  math::ApplyR(p, x_grid, y_grid, &r);
+  comm::SyncWithNeighbors(&r);
+
+  math::Tau(r, r, x_grid, y_grid, &up, &down);
+  comm::AllReduceSum(&up, &down);
+  double tau = up / down;
+
+  math::ApplyP(r, tau, &p);
+  comm::SyncWithNeighbors(&p);
+
+  Matrix g = r;
+  int counter = 0;
+  for (double diff = 1e100; diff > statement::eps;) {
+    math::ApplyR(p, x_grid, y_grid, &r);
+    comm::SyncWithNeighbors(&r);
+
+    math::Alpha(r, g, x_grid, y_grid, &up, &down);
+    comm::AllReduceSum(&up, &down);
+    double alpha = up / down;
+
+    math::ApplyG(r, alpha, &g);
+    comm::SyncWithNeighbors(&g);
+
+    math::Tau(r, g, x_grid, y_grid, &up, &down);
+    comm::AllReduceSum(&up, &down);
+    tau = up / down;
+
+    global_diff = math::ApplyP(g, tau, &p);
+    comm::SyncWithNeighbors(&p);
+    comm::AllReduceMax(&global_diff);
+    diff = global_diff;
+
+    DEBUG(counter++);
+    DEBUG(diff);
+  }
+
+  double err = 0;
+  for (int i = 1; i < p.x_size - 1; ++i) {
+    for (int j = 1; j < p.y_size - 1; ++j) {
+      err = std::max(err,
+                     fabs(statement::Phi(x_grid[i], y_grid[j]) - p.at(i, j)));
+    }
+  }
+  comm::AllReduceMax(&err);
+
+  DEBUG(err);
 }
 
 void Simple() {
@@ -377,7 +559,7 @@ void Simple() {
     double alpha = math::Alpha(r, g, x_grid, y_grid);
     math::ApplyG(r, alpha, &g);
     tau = math::Tau(r, g, x_grid, y_grid);
-    diff = sqrt(math::ApplyP(g, tau, &p) * x_grid.step * y_grid.step);
+    diff = math::ApplyP(g, tau, &p);
     DEBUG(counter++);
     DEBUG(diff);
   }
@@ -409,28 +591,23 @@ void run(int argc, char** argv) {
 
   CALL_MPI(MPI_Comm_rank, MPI_COMM_WORLD, &state::rank);
   CALL_MPI(MPI_Comm_size, MPI_COMM_WORLD, &state::process_num);
-  if (state::rank != 0) {
-    std::stringstream ss;
-    ss << "stderr-" << std::setfill('0') << std::setw(2) << state::rank;
-    if (!freopen(ss.str().c_str(), "a", stderr)) {
-      throw std::runtime_error("freopen error");
-    }
-    std::stringstream ss2;
-    ss2 << "stdout-" << std::setfill('0') << std::setw(2) << state::rank;
-    if (!freopen(ss2.str().c_str(), "a", stdout)) {
-      throw std::runtime_error("freopen error");
-    }
-  }
-  LOG_INFO << "-- rank: " << state::rank;
-  LOG_INFO << "-- process_num: " << state::process_num;
+
+  // std::stringstream ss;
+  // ss << "stderr-" << std::setfill('0') << std::setw(2) << state::rank;
+  // if (!freopen(ss.str().c_str(), "a", stderr)) {
+  //   throw std::runtime_error("freopen error");
+  // }
+
+  DEBUG(state::rank);
+  DEBUG(state::process_num);
 
   state::x_points_num = atoi(argv[1]);
   state::y_points_num = atoi(argv[2]);
 
-  DEBUG(statement::area.x.first);
-  DEBUG(statement::area.x.second);
-  DEBUG(statement::area.y.first);
-  DEBUG(statement::area.y.second);
+  // DEBUG(statement::area.x.first);
+  // DEBUG(statement::area.x.second);
+  // DEBUG(statement::area.y.first);
+  // DEBUG(statement::area.y.second);
 
   if (state::process_num == 1) {
     solution::Simple();
@@ -439,7 +616,7 @@ void run(int argc, char** argv) {
   }
 
   double finish_time = mpi::Time();
-  LOG_INFO << "Run time: " << finish_time - start_time;
+  DEBUG(finish_time - start_time);
 }
 
 int main(int argc, char** argv) {
@@ -457,6 +634,5 @@ int main(int argc, char** argv) {
     return 2;
   }
 
-  std::cout << std::endl;
   return 0;
 }
