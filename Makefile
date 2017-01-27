@@ -1,16 +1,18 @@
+TMPDIR:=.tmp
+$(shell mkdir -p $(TMPDIR) >/dev/null)
 ifeq ($(OPENMP),1)
 	CC = mpixlcxx_r -qsmp=omp -v
 	USE_OPENMP = -D"USE_OPENMP"
 else
-	CC = mpicxx -v
+	CC = mpicxx
 	USE_OPENMP =
 endif
 
 CFLAGS = -O2 $(USE_OPENMP)
-SOURCES = $(wildcard *.cpp)
-HEADERS = $(wildcard *.h)
+SOURCES = $(wildcard src/*.cpp)
+HEADERS = $(wildcard src/*.h)
 OBJECTS = $(SOURCES:.cpp=.o)
-FORMATTED = $(SOURCES:.cpp=.cformatted) $(HEADERS:.h=.hformatted)
+FORMATTED = $(addprefix $(TMPDIR)/, $(notdir $(SOURCES)) $(notdir $(HEADERS)))
 BINARY = task2
 
 all: $(BINARY)
@@ -23,12 +25,10 @@ $(BINARY): $(SOURCES) $(HEADERS)
 clean:
 	rm -f $(OBJECTS) $(BINARY) $(FORMATTED) stderr-* stdout-*
 
-.SUFFIXES: .cformatted .hformatted
-
-.cpp.cformatted:
+$(TMPDIR)/%.cpp : src/%.cpp
 	clang-format -style=Google $< >$@ && cp $@ $<
 
-.h.hformatted:
+$(TMPDIR)/%.h : src/%.h
 	clang-format -style=Google $< >$@ && cp $@ $<
 
 graph.png: graph.gnuplot output.dat
