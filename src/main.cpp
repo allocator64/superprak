@@ -58,7 +58,7 @@ void run(int argc, char** argv) {
 
 int main(int argc, char** argv) {
   if (argc < 3) {
-    std::cerr << "Usage: " << argv[0] << " x_points_num y_points_num"
+    std::cerr << "Usage: " << argv[0] << " x_points_num y_points_num [path/to/output.dat]"
               << std::endl;
     return 1;
   }

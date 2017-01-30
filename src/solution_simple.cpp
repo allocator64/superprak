@@ -57,12 +57,27 @@ void Simple() {
 
   if (!state::output_path.empty()) {
     std::ofstream out(state::output_path.c_str());
-    for (int i = 0; i < p.x_size; ++i) {
-      for (int j = 0; j < p.y_size; ++j) {
+    int step = 1;
+    for (int i = 0; i < p.x_size; i += step) {
+      for (int j = 0; j < p.y_size; j += step) {
         out << x_grid[i] << " " << y_grid[j] << " " << p.at(i, j) << std::endl;
       }
     }
   }
+
+  if (!state::output_path.empty()) {
+    std::ofstream out("correct.dat");
+    double l = statement::area.x.first;
+    double r = statement::area.x.second;
+    double step = (r - l) / 200;
+    for (double x = l; x < r; x += step) {
+      for (double y = l; y < r; y += step) {
+        out << x << " " << y << " " << statement::Phi(x, y) << std::endl;
+      }
+    }
+  }
+
+
 }
 
 }  // namespace solution
